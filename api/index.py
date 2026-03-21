@@ -557,6 +557,14 @@ Categories: clarity, accessibility, engagement, structure, completeness"""
 
 # ─── API Routes ──────────────────────────────────────────────
 
+@app.get("/api")
+async def api_root():
+    return {"status": "active", "message": "FastAPI Serverless Backend correctly initialized."}
+
+@app.get("/api/index")
+async def api_index():
+    return {"status": "active", "message": "FastAPI Serverless Backend correctly initialized."}
+
 @app.post("/api/scan")
 async def scan_form(req: ScanRequest):
     result = extract_form_questions(req.url)
