@@ -18,8 +18,7 @@ import numpy as np
 import io
 import csv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -60,13 +59,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-
 # ─── Database ────────────────────────────────────────────────
 
-DB_PATH = os.path.join(BASE_DIR, "form_scanner.db")
-
+DB_PATH = "/tmp/form_scanner.db"
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -562,12 +557,6 @@ Categories: clarity, accessibility, engagement, structure, completeness"""
 
 
 # ─── API Routes ──────────────────────────────────────────────
-
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    with open(os.path.join(BASE_DIR, "templates", "index.html"), "r") as f:
-        return HTMLResponse(content=f.read())
-
 
 @app.post("/api/scan")
 async def scan_form(req: ScanRequest):
