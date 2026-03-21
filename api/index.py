@@ -23,12 +23,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
-# Selenium imports
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from webdriver_manager.chrome import ChromeDriverManager
+# Pure HTTP scraping
+import urllib.request
+import re
+import json
 
 # AI
 from google import genai
@@ -302,174 +300,81 @@ def audit_accessibility(questions, title=""):
     return {"score": score, "issues": issues, "suggestions": suggestions}
 
 
-# ─── Selenium Form Extraction ───────────────────────────────
-
-def detect_form_type(url):
-    if "forms.gle" in url or "docs.google.com/forms" in url:
-        return "google"
-    elif "forms.office.com" in url or "forms.microsoft.com" in url or "forms.cloud.microsoft" in url:
-        return "microsoft"
-    return "unknown"
-
-
-def create_driver():
-    chrome_options = Options()
-    if os.path.exists("/usr/bin/chromium"):
-        chrome_options.binary_location = "/usr/bin/chromium"
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    user_data_dir = tempfile.mkdtemp()
-    chrome_options.add_argument(f"--user-data-dir={user_data_dir}")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--remote-debugging-port=0")
-
-    chrome_manager_path = ChromeDriverManager().install()
-    if chrome_manager_path:
-        service = Service(chrome_manager_path)
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-    else:
-        driver = webdriver.Chrome(options=chrome_options)
-    return driver, user_data_dir
-
-
-def extract_google_form(url, driver):
-    try:
-        driver.get(url)
-        time.sleep(2)
-        try:
-            title = driver.find_element(By.CLASS_NAME, "whsOEf").text
-        except Exception:
-            title = "Untitled Form"
-        try:
-            desc = driver.find_element(By.CLASS_NAME, "frebird-form-top-description").text
-        except Exception:
-            desc = ""
-        questions = []
-        elems = driver.find_elements(By.CLASS_NAME, "Qr7Oae")
-        for idx, el in enumerate(elems):
-            try:
-                qt = el.find_element(By.CLASS_NAME, "M7eMe").text
-                qtype = "text"
-                if el.find_elements(By.CSS_SELECTOR, "[role='radio']"):
-                    qtype = "multiple_choice"
-                elif el.find_elements(By.CSS_SELECTOR, "[role='checkbox']"):
-                    qtype = "checkboxes"
-                elif el.find_elements(By.CSS_SELECTOR, "select"):
-                    qtype = "dropdown"
-                elif el.find_elements(By.CSS_SELECTOR, "[role='slider']"):
-                    qtype = "scale"
-                elif el.find_elements(By.CSS_SELECTOR, "input[type='date']"):
-                    qtype = "date"
-                elif el.find_elements(By.CSS_SELECTOR, "input[type='time']"):
-                    qtype = "time"
-                options = []
-                if qtype in ["multiple_choice", "checkboxes"]:
-                    for opt in el.find_elements(By.CSS_SELECTOR, "[role='radio'], [role='checkbox']"):
-                        try:
-                            t = opt.find_element(By.TAG_NAME, "span").text
-                            if t:
-                                options.append(t)
-                        except Exception:
-                            pass
-                req = False
-                try:
-                    ar = el.get_attribute("aria-required")
-                    if ar and "true" in ar.lower():
-                        req = True
-                except Exception:
-                    pass
-                questions.append({"question": qt, "type": qtype, "options": options, "required": req, "index": idx})
-            except Exception:
-                continue
-        return {"title": title, "description": desc, "questions": questions, "timestamp": datetime.now().isoformat(), "platform": "google"}
-    except Exception as e:
-        return {"error": str(e)}
-
-
-def extract_microsoft_form(url, driver):
-    try:
-        driver.get(url)
-        time.sleep(3)
-        try:
-            title = driver.find_element(By.CLASS_NAME, "office-form-title").text
-        except Exception:
-            try:
-                title = driver.find_element(By.CSS_SELECTOR, "[role='heading']").text
-            except Exception:
-                title = "Untitled Microsoft Form"
-        try:
-            desc = driver.find_element(By.CLASS_NAME, "office-form-description").text
-        except Exception:
-            desc = ""
-        questions = []
-        elems = driver.find_elements(By.CSS_SELECTOR, "[data-automation-id='questionItem']")
-        for idx, el in enumerate(elems):
-            try:
-                try:
-                    qt = el.find_element(By.CSS_SELECTOR, "[data-automation-id='questionTitle']").text
-                except Exception:
-                    qt = el.find_element(By.CLASS_NAME, "office-form-question-title").text
-                if not qt:
-                    continue
-                qtype = "text"
-                options = []
-                if el.find_elements(By.CSS_SELECTOR, "input[type='radio']"):
-                    qtype = "multiple_choice"
-                    for opt in el.find_elements(By.CSS_SELECTOR, "[role='radio']"):
-                        try:
-                            if opt.text:
-                                options.append(opt.text)
-                        except Exception:
-                            pass
-                elif el.find_elements(By.CSS_SELECTOR, "input[type='checkbox']"):
-                    qtype = "checkboxes"
-                    for opt in el.find_elements(By.CSS_SELECTOR, "[role='checkbox']"):
-                        try:
-                            if opt.text:
-                                options.append(opt.text)
-                        except Exception:
-                            pass
-                elif el.find_elements(By.CSS_SELECTOR, "select") or el.find_elements(By.CSS_SELECTOR, "[role='combobox']"):
-                    qtype = "dropdown"
-                elif el.find_elements(By.CSS_SELECTOR, "input[type='date']"):
-                    qtype = "date"
-                req = False
-                try:
-                    if el.find_elements(By.CSS_SELECTOR, "[aria-required='true']"):
-                        req = True
-                    elif "*" in qt or "required" in el.text.lower():
-                        req = True
-                except Exception:
-                    pass
-                questions.append({"question": qt, "type": qtype, "options": options, "required": req, "index": idx})
-            except Exception:
-                continue
-        return {"title": title, "description": desc, "questions": questions, "timestamp": datetime.now().isoformat(), "platform": "microsoft"}
-    except Exception as e:
-        return {"error": str(e)}
-
+# ─── Pure HTTP Form Extraction ──────────────────────────────
 
 def extract_form_questions(url):
-    user_data_dir = None
+    """
+    Extracts Google Forms layout purely natively using HTTP and Regex 
+    to bypass heavy Selenium dependencies that gracefully crash Vercel Lambdas.
+    """
+    if "docs.google.com/forms" not in url:
+        return {"error": "Native Serverless extraction currently strictly optimized for Google Forms natively! Microsoft Forms require heavier Chromium instances."}
+
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     try:
-        form_type = detect_form_type(url)
-        if form_type == "unknown":
-            return {"error": "Unsupported form type. Use Google Forms or Microsoft Forms."}
-        driver, user_data_dir = create_driver()
-        if form_type == "google":
-            result = extract_google_form(url, driver)
-        else:
-            result = extract_microsoft_form(url, driver)
-        driver.quit()
-        if user_data_dir:
-            shutil.rmtree(user_data_dir, ignore_errors=True)
-        return result
+        with urllib.request.urlopen(req, timeout=10) as response:
+            html = response.read().decode('utf-8')
     except Exception as e:
-        if user_data_dir:
-            shutil.rmtree(user_data_dir, ignore_errors=True)
-        return {"error": str(e)}
+        return {"error": f"Failed to fetch Form HTML natively: {str(e)}"}
+
+    json_data_match = re.search(r'var FB_PUBLIC_LOAD_DATA_ = (\[.*?\]);\s*</script>', html, re.DOTALL)
+    if not json_data_match:
+        return {"error": "Could not identify internal Google Forms JSON format. Form may be fundamentally private or unstructured."}
+
+    try:
+        raw_data = json.loads(json_data_match.group(1))
+        # Navigate robustly through mysterious Google deeply nested arrays
+        form_items = raw_data[1][1]
+        
+        # Pull title from array if available
+        title = raw_data[3] if len(raw_data) > 3 else "Extracted Google Form"
+    except Exception:
+        return {"error": "Fundamental Form Schema successfully downloaded but parsed JSON mapping crashed."}
+
+    questions_extracted = []
+    if not form_items:
+        return {"error": "No items found in form layout."}
+        
+    for item in form_items:
+        # Standard Google items: item[1] is title, item[3] is type
+        if not item or len(item) < 4:
+            continue
+        qtitle = item[1]
+        raw_type = item[3]
+        
+        # Omit purely structural items like titles and raw imagery blocks
+        if raw_type in [8, 9, 11] or not qtitle:
+            continue
+            
+        q_data = {
+            "question": qtitle.strip(),
+            "type": "text", 
+            "required": False,
+            "options": []
+        }
+        
+        try:
+            # Check specifically for required parameters
+            if len(item) > 4 and item[4] and isinstance(item[4], list):
+                q_data["required"] = bool(item[4][0][2])
+
+                # Detect Multiple Choice variants natively
+                if raw_type in [2, 3, 4, 5, 7]:
+                    q_data["type"] = "multiple_choice"
+                    # item[4][0][1] usually holds the choice arrays
+                    if len(item[4][0]) > 1 and item[4][0][1]:
+                        q_data["options"] = [opt[0] for opt in item[4][0][1] if opt]
+        except Exception:
+            pass # Suppress esoteric formatting blocks implicitly
+            
+        questions_extracted.append(q_data)
+
+    if not questions_extracted:
+        return {"error": "Failed to natively parse explicit internal questions. Schema might be corrupted."}
+        
+    return {"title": title, "platform": "google", "questions": questions_extracted}
+
+
 
 
 # ─── AI Generation ──────────────────────────────────────────
