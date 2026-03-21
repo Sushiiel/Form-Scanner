@@ -17,7 +17,8 @@ import statistics
 from collections import Counter
 from io import StringIO
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
@@ -57,6 +58,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Vercel's lambda boots in /var/task/api. Project root is /var/task.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app.mount("/static", StaticFiles(directory=os.path.join(PROJECT_ROOT, "static")), name="static")
 
 # ─── Database ────────────────────────────────────────────────
 
@@ -562,6 +567,11 @@ Categories: clarity, accessibility, engagement, structure, completeness"""
 
 
 # ─── API Routes ──────────────────────────────────────────────
+
+@app.get("/")
+async def serve_home():
+    with open(os.path.join(PROJECT_ROOT, "index.html"), "r") as f:
+        return HTMLResponse(content=f.read())
 
 @app.get("/api")
 async def api_root():
