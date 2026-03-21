@@ -11,12 +11,11 @@ import tempfile
 import shutil
 import sqlite3
 from datetime import datetime
-from collections import Counter
-from io import StringIO
-
-import numpy as np
 import io
 import csv
+import statistics
+from collections import Counter
+from io import StringIO
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -213,11 +212,11 @@ def analyze_question_patterns(questions_data):
 
     if analysis['total_questions'] > 0:
         analysis['required_ratio'] = sum(1 for q in questions_data if q.get('required')) / analysis['total_questions']
-        analysis['avg_question_length'] = float(np.mean(analysis['question_lengths'])) if analysis['question_lengths'] else 0
-        analysis['std_question_length'] = float(np.std(analysis['question_lengths'])) if len(analysis['question_lengths']) > 1 else 0
+        analysis['avg_question_length'] = float(statistics.mean(analysis['question_lengths'])) if analysis['question_lengths'] else 0
+        analysis['std_question_length'] = float(statistics.stdev(analysis['question_lengths'])) if len(analysis['question_lengths']) > 1 else 0
 
     if mcq_option_counts:
-        analysis['avg_options_per_mcq'] = float(np.mean(mcq_option_counts))
+        analysis['avg_options_per_mcq'] = float(statistics.mean(mcq_option_counts))
 
     analysis['top_keywords'] = extract_keywords_tfidf(all_text, top_n=15)
     analysis['similar_questions'] = calculate_question_similarity([q.get('question', '') for q in questions_data])
