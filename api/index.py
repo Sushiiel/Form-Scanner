@@ -30,7 +30,7 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 
 # AI
-import google.generativeai as genai
+from google import genai
 
 # ML
 SKLEARN_AVAILABLE = False
@@ -475,8 +475,8 @@ def generate_answers(questions_data, context="", profile="Professional", tone="N
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return {"error": "GEMINI_API_KEY environment variable not set. Please set it and restart."}
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        
+        client = genai.Client(api_key=api_key)
 
         prompt = f"""Generate realistic, professional answers for this form.
 
@@ -501,7 +501,10 @@ Form Questions:
             prompt += f'\n  "question_{i}": "answer_here",'
         prompt += "\n}"
 
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
 
         try:
             json_str = response.text
@@ -522,8 +525,8 @@ def generate_form_suggestions(questions_data, title=""):
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return {"error": "GEMINI_API_KEY not set."}
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-2.5-flash")
+            
+        client = genai.Client(api_key=api_key)
 
         prompt = f"""Analyze this form and provide improvement suggestions.
 
@@ -544,7 +547,10 @@ Provide exactly 5 improvement suggestions in JSON array format:
 ]
 Categories: clarity, accessibility, engagement, structure, completeness"""
 
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
         json_str = response.text
         if "```json" in json_str:
             json_str = json_str.split("```json")[1].split("```")[0]
