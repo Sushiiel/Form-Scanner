@@ -51,3 +51,7 @@ python3 server.py
 # The application will boot up at http://127.0.0.1:8080
 ```
 Then, simply visit `http://127.0.0.1:8080/` in your browser. All set!
+
+## 👨‍💻 Developer
+
+Architected, developed, and innovated by **1.Sushiiel Anand** **2.Aravind J** **3.Arjun Narayanan**.
